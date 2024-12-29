@@ -112,9 +112,9 @@ def classify_leaves_and_flowers(output_folder: str, flower_color_lower: tuple, f
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Python HTTP trigger function processed a request.")
 
-    image_path = r'C:\Users\ChamsYAHIA\OneDrive - Arion Technologie\Documents\pi\IRM 2\sem1\iot\IOT project\iot-py-project\iot-project\test\test_img.jpeg'
-    output_path = r'C:\Users\ChamsYAHIA\OneDrive - Arion Technologie\Documents\pi\IRM 2\sem1\iot\IOT project\iot-py-project\iot-project\test\detected_leaves.jpg'
-    output_folder = r'C:\Users\ChamsYAHIA\OneDrive - Arion Technologie\Documents\pi\IRM 2\sem1\iot\IOT project\iot-py-project\iot-project\test\leaves'
+    image_path = r'C:\Users\ChamsYAHIA\OneDrive - Arion Technologie\Documents\pi\IRM 2\sem1\iot\IOT project\iot-py-project\iot-project\LeavesDetectionAlgo\test_img.jpeg'
+    output_path = r'C:\Users\ChamsYAHIA\OneDrive - Arion Technologie\Documents\pi\IRM 2\sem1\iot\IOT project\iot-py-project\iot-project\LeavesDetectionAlgo\detected_leaves.jpg'
+    output_folder = r'C:\Users\ChamsYAHIA\OneDrive - Arion Technologie\Documents\pi\IRM 2\sem1\iot\IOT project\iot-py-project\iot-project\LeavesDetectionAlgo\leaves'
 
     green_lower = (20, 25, 25)
     green_upper = (75, 225, 225)

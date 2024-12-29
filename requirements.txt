@@ -1,7 +1,3 @@
-# DO NOT include azure-functions-worker in this file
-# The Python Worker is managed by Azure Functions platform
-# Manually managing azure-functions-worker may cause unexpected issues
-
-azure-functions
-opencv-python-headless
-numpy
+azure-functions==1.21.3
+numpy==2.2.1
+opencv-python-headless==4.10.0.84
