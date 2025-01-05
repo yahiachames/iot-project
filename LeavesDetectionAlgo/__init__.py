@@ -3,22 +3,33 @@ import logging
 import cv2
 import numpy as np
 import azure.functions as func
+from ..utils.BlobStorageHandler import BlobStorageHandler
 
 def save_debug_image(image, step_name, output_folder):
     """Save intermediate debug images for visualization."""
-    debug_path = os.path.join(output_folder, f"debug_{step_name}.png")
-    cv2.imwrite(debug_path, image)
+    blob_handler = BlobStorageHandler(os.environ.get("connectionString"), os.environ.get("containerName"))
+    base_path = f"{step_name}.png"
+    path = blob_handler.get_blob_path(base_path)
+    blob_handler.save_stream_to_blob(image,path)
+ 
 
-def process_leaves(image_path: str, output_path: str, output_folder: str,
+
+def process_leaves(image_stream, output_folder: str,
                    threshold_value: int = 0, kernel_size: int = 3,
                    dist_threshold: float = 0.7, min_region_size: int = 100) -> int:
     """Process an image to detect and segment leaves."""
     os.makedirs(output_folder, exist_ok=True)
 
     # Load image
-    img = cv2.imread(image_path)
+    # Convert the byte stream into a NumPy array
+    nparr = np.frombuffer(image_stream, np.uint8)
+
+    # Decode the image from the NumPy array
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
     if img is None:
-        raise FileNotFoundError(f"Image could not be loaded from path: {image_path}")
+        raise ValueError("Failed to decode image from the provided stream.")
+
 
     # Convert to HSV and create binary mask for green regions
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -62,7 +73,6 @@ def process_leaves(image_path: str, output_path: str, output_folder: str,
             img[markers == marker_id] = cv2.add(img[markers == marker_id], (0, 100, 0))
 
     # Save final result
-    cv2.imwrite(output_path, img)
     save_debug_image(img, "final_result", output_folder)
 
     # Extract and count leaf regions
@@ -81,60 +91,42 @@ def process_leaves(image_path: str, output_path: str, output_folder: str,
         leaf = cv2.bitwise_and(img, img, mask=mask)
 
         # Save leaf image
-        leaf_path = os.path.join(output_folder, f"leaf_{leaf_count}.png")
-        cv2.imwrite(leaf_path, leaf)
+        save_debug_image(leaf, f"leaf_{leaf_count}", output_folder)
         leaf_count += 1
 
     return leaf_count
-
-def classify_leaves_and_flowers(output_folder: str, flower_color_lower: tuple, flower_color_upper: tuple, leaf_color_lower: tuple, leaf_color_upper: tuple):
-    """Classify extracted images as leaves or flowers based on HSV color ranges."""
-    for file_name in os.listdir(output_folder):
-        if file_name.endswith('.png'):
-            file_path = os.path.join(output_folder, file_name)
-            img = cv2.imread(file_path)
-
-            if img is None:
-                continue
-
-            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-            flower_mask = cv2.inRange(hsv, flower_color_lower, flower_color_upper)
-            leaf_mask = cv2.inRange(hsv, leaf_color_lower, leaf_color_upper)
-
-            flower_count = cv2.countNonZero(flower_mask)
-            leaf_count = cv2.countNonZero(leaf_mask)
-
-            if flower_count > leaf_count:
-                new_name = file_name.replace("leaf", "flower")
-                os.rename(file_path, os.path.join(output_folder, new_name))
 
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Python HTTP trigger function processed a request.")
 
-    image_path = r'C:\Users\ChamsYAHIA\OneDrive - Arion Technologie\Documents\pi\IRM 2\sem1\iot\IOT project\iot-py-project\iot-project\LeavesDetectionAlgo\test_img.jpeg'
-    output_path = r'C:\Users\ChamsYAHIA\OneDrive - Arion Technologie\Documents\pi\IRM 2\sem1\iot\IOT project\iot-py-project\iot-project\LeavesDetectionAlgo\detected_leaves.jpg'
-    output_folder = r'C:\Users\ChamsYAHIA\OneDrive - Arion Technologie\Documents\pi\IRM 2\sem1\iot\IOT project\iot-py-project\iot-project\LeavesDetectionAlgo\leaves'
+    # Get input from the HTTP request
+    try:
+        req_body = req.get_json()
+        image_blob_name = req_body.get("imageBlobName")
+        connection_string = os.environ.get("connectionString")
+        container_name = os.environ.get("containerName")
 
-    green_lower = (20, 25, 25)
-    green_upper = (75, 225, 225)
+        if not all([image_blob_name, connection_string, container_name]):
+            return func.HttpResponse("Missing required parameters.", status_code=400)
 
-    flower_lower = (150, 100, 100)
-    flower_upper = (180, 255, 255)
+        # Initialize Blob Storage Handler
+        blob_handler = BlobStorageHandler(connection_string, container_name)
 
-    leaf_count = process_leaves(
-        image_path=image_path,
-        output_path=output_path,
-        output_folder=output_folder,
-        threshold_value=20,
-        kernel_size=7,
-        dist_threshold=0.8,
-        min_region_size=100,
-    )
+        # Download the image from Blob Storage
+        image = blob_handler.read_blob_to_stream(image_blob_name)
 
-    classify_leaves_and_flowers(output_folder, flower_lower, flower_upper, green_lower, green_upper)
+        # Set output paths
+        output_folder = "/tmp/outputs"
 
-    return func.HttpResponse(
-        f"Processed {leaf_count} leaves and saved them in {output_folder}.",
-        status_code=200
-    )
+
+        # Process leaves
+        leaf_count = process_leaves(image, output_folder)
+
+
+
+        return func.HttpResponse(f"Processed {leaf_count} leaves and uploaded the outputs.", status_code=200)
+
+    except Exception as e:
+        logging.error(f"An error occurred: {str(e)}")
+        return func.HttpResponse(f"An error occurred: {str(e)}", status_code=500)
