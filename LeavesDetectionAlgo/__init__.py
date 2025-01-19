@@ -5,10 +5,10 @@ import numpy as np
 import azure.functions as func
 from ..utils.BlobStorageHandler import BlobStorageHandler
 
-def save_debug_image(image, step_name, output_folder):
+def save_debug_image(image, step_name, image_name):
     """Save intermediate debug images for visualization."""
     blob_handler = BlobStorageHandler(os.environ.get("connectionString"), os.environ.get("containerName"))
-    base_path = f"{step_name}.png"
+    base_path = f"/detected_leaves/{image_name}/{step_name}.png"
     path = blob_handler.get_blob_path(base_path)
     blob_handler.save_stream_to_blob(image,path)
  
@@ -16,7 +16,7 @@ def save_debug_image(image, step_name, output_folder):
 
 def process_leaves(image_stream, output_folder: str,
                    threshold_value: int = 0, kernel_size: int = 3,
-                   dist_threshold: float = 0.7, min_region_size: int = 100) -> int:
+                   dist_threshold: float = 0.7, min_region_size: int = 100,image_name : str = "") -> int:
     """Process an image to detect and segment leaves."""
     os.makedirs(output_folder, exist_ok=True)
 
@@ -33,35 +33,35 @@ def process_leaves(image_stream, output_folder: str,
 
     # Convert to HSV and create binary mask for green regions
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    green_mask = cv2.inRange(hsv, (43, 52, 52), (80, 255, 255))  # Adjust values as needed
-    save_debug_image(green_mask, "binary_hsv", output_folder)
+    green_mask = cv2.inRange(hsv, (20, 40, 40), (140, 255, 255)) # Adjust values as needed
+    save_debug_image(green_mask, "binary_hsv", image_name)
 
     # Apply morphological opening to clean up noise
-    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     morph_open = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN, kernel, iterations=2)
-    save_debug_image(morph_open, "morph_open_hsv", output_folder)
+    save_debug_image(morph_open, "morph_open_hsv", image_name)
 
     # Distance transform
     dist_transform = cv2.distanceTransform(morph_open, cv2.DIST_L2, 5)
     dist_norm = cv2.normalize(dist_transform, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    save_debug_image(dist_norm, "distance_transform", output_folder)
+    save_debug_image(dist_norm, "distance_transform", image_name)
 
     # Sure foreground
     _, sure_fg = cv2.threshold(dist_transform, dist_threshold * dist_transform.max(), 255, 0)
     sure_fg = np.uint8(sure_fg)
-    save_debug_image(sure_fg, "sure_foreground", output_folder)
+    save_debug_image(sure_fg, "sure_foreground", image_name)
 
     # Sure background
     sure_bg = cv2.dilate(morph_open, kernel, iterations=3)
     unknown = cv2.subtract(sure_bg, sure_fg)
-    save_debug_image(unknown, "unknown_regions", output_folder)
+    save_debug_image(unknown, "unknown_regions", image_name)
 
     # Marker labeling for watershed
     _, markers = cv2.connectedComponents(sure_fg)
     markers = markers + 1
     markers[unknown == 255] = 0
     markers_vis = (markers.astype(np.uint8) + 1) * 50
-    save_debug_image(markers_vis, "markers", output_folder)
+    save_debug_image(markers_vis, "markers", image_name)
 
     # Apply watershed
     markers = cv2.watershed(img, markers)
@@ -73,7 +73,7 @@ def process_leaves(image_stream, output_folder: str,
             img[markers == marker_id] = cv2.add(img[markers == marker_id], (0, 100, 0))
 
     # Save final result
-    save_debug_image(img, "final_result", output_folder)
+    save_debug_image(img, "final_result", image_name)
 
     # Extract and count leaf regions
     leaf_count = 0
@@ -121,7 +121,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
 
 
         # Process leaves
-        leaf_count = process_leaves(image, output_folder)
+        leaf_count = process_leaves(image, output_folder,image_name=image_blob_name)
 
 
 

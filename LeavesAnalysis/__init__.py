@@ -9,7 +9,7 @@ from azure.functions import HttpRequest, HttpResponse
 import numpy as np
 import uuid
 
-def fetch_images_from_blob():
+def fetch_images_from_blob(imageName = ""):
     """
     Fetch images from Azure Blob Storage for the last 4 hours, filtered by prefix 'leaf_'.
     """
@@ -212,6 +212,8 @@ def main(req: HttpRequest) -> HttpResponse:
     # try:
 
         table_name_tempHumdity = os.environ.get("table_name_tempHumdity")
+        req_body = req.get_json()
+        image_blob_name = req_body.get("imageBlobName")
 
         # Validate input
         if not table_name_tempHumdity:
